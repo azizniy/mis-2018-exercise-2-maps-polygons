@@ -3,9 +3,11 @@ package com.example.mis.polygons;
 import android.Manifest;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -15,8 +17,13 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.PolygonOptions;
+
+import java.util.ArrayList;
+import java.util.List;
 // shared preferences
 //http://www.androidtrainee.com/adding-multiple-marker-locations-in-google-maps-android-api-v2-and-save-it-in-shared-preferences/
 
@@ -24,7 +31,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private GoogleMap mMap;
     private EditText etText;
-    private Button cleanMap;
+    private Button cleanMap, polygon;
+    //private HashMap<String, List<String>> markersHashMap = new HashMap<String, List<String>>();
+    private List<Double> coordinatesX = new ArrayList<Double>();
+    private List<Double> coordinatesY = new ArrayList<Double>();
+    private List<LatLng> pointsList;
+    private LatLng[] pointsArr;
 
     SharedPreferences sharedPreferences;
     int locationCount = 0;
@@ -36,6 +48,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         etText = findViewById(R.id.etText);
         cleanMap = findViewById(R.id.cleanMap);
+        polygon = findViewById(R.id.polygon);
+
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
@@ -44,6 +58,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         //Clean Map Button
         cleanMap.setOnClickListener(this);
+        polygon.setOnClickListener(this);
 
         // Toast.makeText(this,savedInstanceState.getBundle(),Toast.LENGTH_SHORT).show();
     }
@@ -138,6 +153,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 title = sharedPreferences.getString("title" + i, "0");
                 // Drawing marker on the map
                 drawMarker(new LatLng(Double.parseDouble(lat), Double.parseDouble(lng)),title );
+
+                //Save markers into HashMap
+    //            coordinates.clear();
+               // markersHashMap.clear();
+//                coordinates.add(title);
+//                coordinates.add(lat);
+//                coordinates.add(lng);
+                //markersHashMap.put(title,coordinates);
             }
             // Moving CameraPosition to last clicked position
             mMap.moveCamera(CameraUpdateFactory.newLatLng(new LatLng(Double.parseDouble(lat), Double.parseDouble(lng))));
@@ -151,12 +174,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     private void drawMarker(LatLng point, String text) {
-// Creating an instance of MarkerOptions
+        // Creating an instance of MarkerOptions
         MarkerOptions markerOptions = new MarkerOptions();
-// Setting latitude and longitude for the marker
+        // Setting latitude and longitude for the marker
         markerOptions.position(point).title(text);
-// Adding marker on the Google Map
+        // Adding marker on the Google Map
         mMap.addMarker(markerOptions);
+
+        //save to HashMap
+       // coordinates.add(text);
+        coordinatesX.add(point.latitude);
+        coordinatesY.add(point.longitude);
+        Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+       // markersHashMap.put(text,coordinates);
     }
 
     @Override
@@ -173,8 +203,98 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 editor.commit();
                 // Setting locationCount to zero
                 locationCount=0;
+                //empty coordinates list
+                coordinatesX.clear();
+                coordinatesY.clear();
                 break;
-            //case R.id.xxxxx:
+            case R.id.polygon:
+                //changing text of a button
+                changeText();
+                //computing area between markers
+                drawPolygon();
+                break;
+        }
+    }
+
+    private void drawPolygon() {
+        pointsList = new ArrayList<LatLng>();
+        //Adding coordinates of markers to draw polygon
+        for(int i = 0; i<coordinatesX.size(); i++) {
+            pointsList.add(new LatLng(coordinatesX.get(i), coordinatesY.get(i)));
+        }
+        // Convert arrayList to array
+        //https://stackoverflow.com/questions/5374311/convert-arrayliststring-to-string-array
+        pointsArr  = new LatLng[pointsList.size()];
+        pointsArr = pointsList.toArray(pointsArr);
+
+        //Draw polygon
+        if(!pointsList.isEmpty()){
+            mMap.addPolygon(new PolygonOptions()
+                    .add(pointsArr)
+                    .strokeColor(Color.RED).strokeWidth(1)
+                    .fillColor(0x5500ff00)).setTag("FFF");
+        }
+
+        //Calculating area
+        double area = computeArea();
+
+        //Calculate Centroid
+        //https://stackoverflow.com/questions/18440823/how-do-i-calculate-the-center-of-a-polygon-in-google-maps-android-api-v2
+        LatLng centroid = calculateCentroid(pointsList);
+        //Adding Marker in the center of the polygon
+        if(!pointsList.isEmpty()){
+            mMap.addMarker(new MarkerOptions()
+                    .position(centroid)
+                    .title("CENTROID "+ area)
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)));
+        }
+    }
+
+    private LatLng calculateCentroid(List<LatLng> pointsList) {
+        double x = 0;
+        double y = 0;
+
+        for (int i = 0; i < pointsList.size(); i++) {
+            x += coordinatesX.get(i);
+            y += coordinatesY.get(i);
+        }
+
+        int totalPoints = pointsList.size();
+        x = x / totalPoints;
+        y = y / totalPoints;
+
+        LatLng centroid = new LatLng(x,y);
+        return centroid;
+    }
+
+    private double computeArea() {
+       // https://www.mathopenref.com/coordpolygonarea2.html
+        double area = 0;
+        Log.d("TAG1", "sdhgfdj" + String.valueOf(coordinatesX.size()));
+        int numOfPoints = coordinatesX.size(); //or coordiantesY.size()
+       // Toast.makeText(this,  coordinatesX.size(), Toast.LENGTH_SHORT).show();
+        for(int i = 0; i<numOfPoints && coordinatesX.size()>0; i++){
+            if(i==numOfPoints-1){//i/num==1
+                area = area + (coordinatesX.get(i)*coordinatesY.get(0)) - (coordinatesX.get(0)*coordinatesY.get(i));
+                Log.d("TAG1", "check " + i);
+                Log.d("TAG1", "coord " + coordinatesX.get(i));
+            }else{
+                Log.d("TAG1", "coord " + coordinatesX.get(i));
+                area = area + (coordinatesX.get(i)*coordinatesY.get(i+1)) - (coordinatesX.get(i+1)*coordinatesY.get(i));
+            }
+        }
+        return area/2;
+    }
+
+    private void changeText() {
+        if( polygon.getText().equals("Start Polygon")){
+            polygon.setText("End Polygon");
+        }else{
+            polygon.setText("Start Polygon");
+            pointsList.clear();
+            pointsArr = null;
+            coordinatesX.clear();
+            coordinatesY.clear();
         }
     }
 }
