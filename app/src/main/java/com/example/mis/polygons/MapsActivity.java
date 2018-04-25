@@ -7,7 +7,6 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -24,6 +23,14 @@ import com.google.android.gms.maps.model.PolygonOptions;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static java.lang.Math.PI;
+import static java.lang.Math.atan2;
+import static java.lang.Math.cos;
+import static java.lang.Math.sin;
+import static java.lang.Math.tan;
+import static java.lang.Math.toRadians;
+import static java.lang.StrictMath.abs;
 // shared preferences
 //http://www.androidtrainee.com/adding-multiple-marker-locations-in-google-maps-android-api-v2-and-save-it-in-shared-preferences/
 
@@ -236,7 +243,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
 
         //Calculating area
-        double area = computeArea();
+        double area = computeArea(pointsList);
 
         //Calculate Centroid
         //https://stackoverflow.com/questions/18440823/how-do-i-calculate-the-center-of-a-polygon-in-google-maps-android-api-v2
@@ -245,8 +252,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         if(!pointsList.isEmpty()){
             mMap.addMarker(new MarkerOptions()
                     .position(centroid)
-                    .title("CENTROID "+ area)
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)));
+                    .title(String.format("%.2f m2", area ))
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
         }
     }
 
@@ -267,23 +274,46 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         return centroid;
     }
 
-    private double computeArea() {
-       // https://www.mathopenref.com/coordpolygonarea2.html
-        double area = 0;
-        Log.d("TAG1", "sdhgfdj" + String.valueOf(coordinatesX.size()));
-        int numOfPoints = coordinatesX.size(); //or coordiantesY.size()
-       // Toast.makeText(this,  coordinatesX.size(), Toast.LENGTH_SHORT).show();
-        for(int i = 0; i<numOfPoints && coordinatesX.size()>0; i++){
-            if(i==numOfPoints-1){//i/num==1
-                area = area + (coordinatesX.get(i)*coordinatesY.get(0)) - (coordinatesX.get(0)*coordinatesY.get(i));
-                Log.d("TAG1", "check " + i);
-                Log.d("TAG1", "coord " + coordinatesX.get(i));
-            }else{
-                Log.d("TAG1", "coord " + coordinatesX.get(i));
-                area = area + (coordinatesX.get(i)*coordinatesY.get(i+1)) - (coordinatesX.get(i+1)*coordinatesY.get(i));
-            }
+    private double computeArea(List<LatLng> path) {
+        //https://github.com/googlemaps/android-maps-utils/blob/master/library/src/com/google/maps/android/SphericalUtil.java
+        double radius = 6371000;
+        int size = path.size();
+        if (size < 3) { return 0; }
+        double total = 0;
+        LatLng prev = path.get(size - 1);
+        double prevTanLat = tan((PI / 2 - toRadians(prev.latitude)) / 2);
+        double prevLng = toRadians(prev.longitude);
+        // For each edge, accumulate the signed area of the triangle formed by the North Pole
+        // and that edge ("polar triangle").
+        for (LatLng point : path) {
+            double tanLat = tan((PI / 2 - toRadians(point.latitude)) / 2);
+            double lng = toRadians(point.longitude);
+            total += polarTriangleArea(tanLat, lng, prevTanLat, prevLng);
+            prevTanLat = tanLat;
+            prevLng = lng;
         }
-        return area/2;
+        return abs(total * (radius * radius));
+//       // https://www.mathopenref.com/coordpolygonarea2.html
+////        double area = 0;
+////        Log.d("TAG1", "sdhgfdj" + String.valueOf(coordinatesX.size()));
+////        int numOfPoints = coordinatesX.size(); //or coordiantesY.size()
+////       // Toast.makeText(this,  coordinatesX.size(), Toast.LENGTH_SHORT).show();
+////        for(int i = 0; i<numOfPoints && coordinatesX.size()>0; i++){
+////            if(i==numOfPoints-1){//i/num==1
+////                area = area + (coordinatesX.get(i)*coordinatesY.get(0)) - (coordinatesX.get(0)*coordinatesY.get(i));
+////                Log.d("TAG1", "check " + i);
+////                Log.d("TAG1", "coord " + coordinatesX.get(i));
+////            }else{
+////                Log.d("TAG1", "coord " + coordinatesX.get(i));
+////                area = area + (coordinatesX.get(i)*coordinatesY.get(i+1)) - (coordinatesX.get(i+1)*coordinatesY.get(i));
+////            }
+////        }
+////        return area/2;
+    }
+    private static double polarTriangleArea(double tan1, double lng1, double tan2, double lng2) {
+        double deltaLng = lng1 - lng2;
+        double t = tan1 * tan2;
+        return 2 * atan2(t * sin(deltaLng), 1 + t * cos(deltaLng));
     }
 
     private void changeText() {
